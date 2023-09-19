@@ -15,11 +15,13 @@ class Rectangle(NamedTuple):
 
 
 class Palette:
+    INVISIBLE = pygame.Color(0, 0, 0, 0)
     BLACK = pygame.Color(0, 0, 0)
     DARKGRAY = pygame.Color(20, 20, 20)
     GRAY = pygame.Color(120, 120, 120)
     LIGHTBLUE = pygame.Color(0, 255, 255)
     PURPLE = pygame.Color(50, 0, 150)
+    GREEN = pygame.Color(20, 200, 20)
     RED = pygame.Color(200, 0, 0)
     WHITE = pygame.Color(255, 255, 255)
 
