@@ -4,6 +4,8 @@ import sys
 from typing import NamedTuple, Union
 
 
+# Type not enforced for brevity - treated as equivalent to a 2 int tuple
+# This class exists more to keep track of which tuples are coordinates
 class Coordinate(NamedTuple):
     x: int
     y: int
@@ -26,7 +28,6 @@ class Palette:
     WHITE = pygame.Color(255, 255, 255)
 
 
-# Classes
 class Screen:
     def __init__(self, title: str, version: str = "",
                  width: int = 1080, aspect_ratio: float = 16 / 9,
@@ -36,7 +37,7 @@ class Screen:
         mixer.init()
 
         self.fonts = fonts
-        self.fonts['default'] = font.Font(None, 12)
+        self.fonts['default'] = font.Font(None, 30)
 
         flags = pygame.DOUBLEBUF
         if len(sys.argv) > 1:
@@ -85,12 +86,12 @@ class Screen:
                     color: pygame.Color = Palette.BLACK, font: str = 'default') -> None:
         font_obj = self.fonts[font]
         rendered_text = font_obj.render(text, True, color)
-        self._canvas.blit(rendered_text, *coord)
+        self._canvas.blit(rendered_text, self._q1_transform(coord))
 
     def center_text(self, text: str, coord: Coordinate,
                     color: pygame.Color = Palette.BLACK, font: str = 'default') -> None:
         text_size = self.fonts[font].size(text)
-        location = Coordinate(*[c + (text_size[i] // 2) for i, c in enumerate(self._q1_transform(coord))])
+        location = Coordinate(*[c + (text_size[i] // 2) * (i * 2 - 1) for i, c in enumerate(coord)])
         self.text(text, location, color, font)
 
     def hcenter_text(self, text: str, height: int = 0,

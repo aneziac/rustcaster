@@ -1,7 +1,7 @@
 import pygame as pg
 import pygame.key
 import pglib
-from pglib import Coordinate, Palette, Rectangle
+from pglib import Palette, Rectangle
 import numpy as np
 import sys
 
@@ -270,6 +270,9 @@ class Game:
                             self.player.dirvec(-self.player.fov / 2) * self.DEBUG_RAY_LENGTH)
             self.screen.line(minimap_pos, minimap_pos +
                             self.player.dirvec( self.player.fov / 2) * self.DEBUG_RAY_LENGTH)
+
+        # fps
+        self.screen.center_text(f'FPS: {round(self.screen.clock.get_fps())}', (50, self.screen.HEIGHT - 30))
 
 
 def main():
