@@ -69,7 +69,7 @@ class Player:
     def pos(self) -> pg.Vector2:
         return pg.Vector2(self.x, self.y)
 
-    def dirvec(self, offset: float = 0) -> pg.Vector2:
+    def dirvec(self, offset: np.float64 = np.float64(0)) -> pg.Vector2:
         offset_rad = np.radians(offset)
         return pg.Vector2(np.cos(self.dir + offset_rad), np.sin(self.dir + offset_rad))
 
@@ -194,17 +194,22 @@ class Game:
         # return a large value to indicate intersection out of bounds
         # we do this instead of returning -1 etc because we want to take the
         # minimum of distance on both axes
-        return (1e+8, 0)
+        return (np.float64(1e+8), 0)
 
     def draw(self) -> None:
         # initial raycast angle and corresponding angle increment
-        angle_inc = np.radians(self.player.fov / self.screen.WIDTH)
+        angle_inc: np.float64 = np.radians(self.player.fov / self.screen.WIDTH)
         angle: np.float64 = self.player.dir + np.radians(self.player.fov / 2)
 
         for x in range(self.screen.WIDTH):
             # find the minimum of the x and y axis rays distance and the corresponding color
             rays = (self.raycast(angle, True), self.raycast(angle, False))
-            horizontal, (dist_squared, color_index) = min(enumerate(rays), key=lambda x: x[1][0])
+
+            horizontal: int
+            color_index: int
+            dist_squared: np.float64
+
+            horizontal, (dist_squared, color_index) = min(enumerate(rays), key=lambda x: x[1][0]) # type: ignore
             color = self.world.COLORS[color_index]
 
             if horizontal:
@@ -215,12 +220,12 @@ class Game:
 
             if self.projection_type:
                 # gaussian projection based on sampling normal distribution
-                h = 0.9 * self.screen.HEIGHT * np.exp(-0.5 * corrected_dist_squared / self.VARIANCE) \
-                        + self.screen.HEIGHT * 0.1
+                h = int(0.9 * self.screen.HEIGHT * np.exp(-0.5 * corrected_dist_squared / self.VARIANCE) \
+                        + self.screen.HEIGHT * 0.1)
             else:
                 # standard linear projection
                 h = min(self.screen.HEIGHT,
-                        self.world.block_size * self.PROJ_PLANE_DIST / np.sqrt(corrected_dist_squared))
+                        int(self.world.block_size * self.PROJ_PLANE_DIST / np.sqrt(corrected_dist_squared)))
 
             start_y = (self.screen.HEIGHT - h) // 2
 
@@ -251,19 +256,23 @@ class Game:
         # fov and direction indicators
         self.screen.polygon(
             [
-                minimap_pos,
-                minimap_pos + self.player.dirvec(-self.player.fov / 2) * self.FOV_RAY_LENGTH,
-                minimap_pos + self.player.dirvec( self.player.fov / 2) * self.FOV_RAY_LENGTH,
+                to_coordinate(minimap_pos),
+                to_coordinate(minimap_pos + self.player.dirvec(-self.player.fov / 2) * self.FOV_RAY_LENGTH),
+                to_coordinate(minimap_pos + self.player.dirvec( self.player.fov / 2) * self.FOV_RAY_LENGTH),
             ],
             Palette.YELLOW
         )
 
         # draw the player on the minimap
         radius = max(2, np.floor(self.MINIMAP_BLOCK_SIZE / 15))
-        self.screen.circle(minimap_pos, radius, Palette.ORANGE)
+        self.screen.circle(to_coordinate(minimap_pos), radius, Palette.ORANGE)
 
         # fps
         self.screen.center_text(f'FPS: {round(self.screen.clock.get_fps())}', (50, self.screen.HEIGHT - 30))
+
+
+def to_coordinate(vec: pg.Vector2) -> tuple[int, int]:
+    return (int(vec[0]), int(vec[1]))
 
 
 def choose_map() -> str:

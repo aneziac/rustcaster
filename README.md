@@ -7,7 +7,3 @@ There are implementations in Python, Rust, and C++ in various states of progress
 ### Screenshot from the python version
 
 ![demo](demo.png)
-
-### Maps
-
-<img src="maps/default.png" width=200px image-rendering=pixelated>

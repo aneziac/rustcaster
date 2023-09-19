@@ -4,11 +4,7 @@ import sys
 from typing import NamedTuple, Union
 
 
-# Type not enforced for brevity - treated as equivalent to a 2 int tuple
-# This class exists more to keep track of which tuples are coordinates
-class Coordinate(NamedTuple):
-    x: int
-    y: int
+Coordinate = tuple[int, int]
 
 
 class Rectangle(NamedTuple):
@@ -63,64 +59,62 @@ class Screen:
     def clear(self) -> None:
         self._canvas.fill(Palette.WHITE)
 
-    def _q1_transform(self, coords: Union[Coordinate, list[Coordinate]]
-                               ) -> Union[Coordinate, list[Coordinate]]:
+    def _q1_transform_coordinate(self, coord: Coordinate) -> Coordinate:
+        return (coord[0], self.HEIGHT - coord[1])
 
-        def q1_transform_coordinate(coord: Coordinate):
-            return Coordinate(int(coord[0]), int(self.HEIGHT - coord[1]))
-
-        if isinstance(coords, list):
-            transformed_coordinates: list[Coordinate] = []
-            for coord in coords:
-                transformed_coordinates.append(q1_transform_coordinate(coord))
-            return transformed_coordinates
-
-        else:
-            return q1_transform_coordinate(coords)
+    def _q1_transform_list(self, coords: list[Coordinate]) -> list[Coordinate]:
+        transformed_coordinates: list[Coordinate] = []
+        for coord in coords:
+            transformed_coordinates.append(self._q1_transform_coordinate(coord))
+        return transformed_coordinates
 
     def _q1_transform_rect(self, rect: Rectangle) -> Rectangle:
         return Rectangle(
-            Coordinate(rect.origin[0], self.HEIGHT - rect.origin[1] - rect.dims[1]), rect.dims
+            (rect.origin[0], self.HEIGHT - rect.origin[1] - rect.dims[1]), rect.dims
         )
 
     def text(self, text: str, coord: Coordinate,
                     color: pygame.Color = Palette.BLACK, font: str = 'default') -> None:
         font_obj = self.fonts[font]
         rendered_text = font_obj.render(text, True, color)
-        self._canvas.blit(rendered_text, self._q1_transform(coord))
+        self._canvas.blit(rendered_text, self._q1_transform_coordinate(coord))
 
     def center_text(self, text: str, coord: Coordinate,
                     color: pygame.Color = Palette.BLACK, font: str = 'default') -> None:
         text_size = self.fonts[font].size(text)
-        location = Coordinate(*[c + (text_size[i] // 2) * (i * 2 - 1) for i, c in enumerate(coord)])
+        location = (
+            coord[0] - text_size[0] // 2,
+            coord[1] + text_size[1] // 2
+        )
         self.text(text, location, color, font)
 
     def hcenter_text(self, text: str, height: int = 0,
                     color: pygame.Color = Palette.BLACK, font: str = 'default') -> None:
         if not height:
             height = self.HEIGHT
-        self.center_text(text, color, font, Coordinate(self.WIDTH, height))
+        self.center_text(text, (self.WIDTH, height), color, font)
 
     def polygon(self, vertices: list[Coordinate], color: pygame.Color) -> None:
-        tvertices = self._q1_transform(vertices)
+        tvertices = self._q1_transform_list(vertices)
 
         gfxdraw.aapolygon(self._canvas, tvertices, color)
         gfxdraw.filled_polygon(self._canvas, tvertices, color)
 
     def circle(self, center: Coordinate, radius: int, color: pygame.Color) -> None:
-        tcenter = self._q1_transform(center)
+        tcenter = self._q1_transform_coordinate(center)
 
         gfxdraw.aacircle(self._canvas, *tcenter, radius, color)
         gfxdraw.filled_circle(self._canvas, *tcenter, radius, color)
 
     def line(self, start: Coordinate, end: Coordinate, color: pygame.Color = Palette.RED) -> None:
-        gfxdraw.line(self._canvas, *self._q1_transform(start), *self._q1_transform(end), color)
+        gfxdraw.line(self._canvas, *self._q1_transform_coordinate(start),
+                                   *self._q1_transform_coordinate(end), color)
 
     def rect(self, rect: Rectangle, color: pygame.Color = Palette.BLACK) -> None:
         draw.rect(self._canvas, color, self._q1_transform_rect(rect))
 
     def pixel(self, location: Coordinate, color: pygame.Color) -> None:
-        self._canvas.set_at(self._q1_transform(location), color)
+        self._canvas.set_at(self._q1_transform_coordinate(location), color)
 
     def loop(self) -> bool:
         for event in pygame.event.get():
