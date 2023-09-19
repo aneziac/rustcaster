@@ -1,5 +1,6 @@
 import pygame as pg
 import pglib
+from pglib import Coordinate, Palette, Rectangle
 from typing import Tuple, List
 import numpy as np
 import sys
@@ -16,8 +17,8 @@ class World:
                 [1, 1, 1, 1, 1]
             ]
             self.COLORS = [
-                pg.Color(0, 0, 0),
-                pg.Color(30, 30, 30),
+                Palette.BLACK,
+                Palette.DARKGRAY,
                 pg.Color(20, 200, 20)
             ]
 
@@ -31,7 +32,7 @@ class World:
                             self.HEIGHT * self.block_size)
 
     def load_map(self, map_path) -> Tuple[List[List[int]], List[pg.Color]]:
-        im = pglib.load(map_path)
+        im = pglib.load_image(map_path)
         size = im.get_size()
         game_map, colors = [[0] * size[0] for _ in range(size[1])], [pg.Color(0, 0, 0, 0)]
 
@@ -57,11 +58,11 @@ class Player:
         self.y = world.block_size * y + (world.block_size // 2)
         self.world = world
         self.dir = np.float64(0.01)  # prevent division by zero by giving small intial value
-        self.step_size = 4.0
+        self.step_size = 2.0
         self.turn_speed = 0.03
         self.fov = np.float64(60)
 
-    def move(self):
+    def move(self) -> None:
         keys = pg.key.get_pressed()
 
         if keys[pg.K_w]:
@@ -93,13 +94,11 @@ class Player:
         self.block_y = int(self.y) // self.world.block_size
 
         # this bit is unnecessarily fancy but it's clever so I kept it
-        n = 0
-        for _ in range(4):
+        for n in range(4):
             wall_flags |= (1 << n) * bool(
                 self.world.GAME_MAP[self.block_x + int(np.sin(np.pi / 2 * n))] \
                                    [self.block_y + int(np.cos(np.pi / 2 * n))]
             )
-            n += 1
 
         return wall_flags
 
@@ -129,7 +128,7 @@ class Game:
         self.PROJ_PLANE_DIST = self.screen.WIDTH / 2 / np.tan(np.radians(self.player.fov / 2))
         self.MINIMAP_BLOCK_SIZE = self.screen.HEIGHT / 3 / self.world.HEIGHT
         self.SCALE_FACTOR = self.MINIMAP_BLOCK_SIZE / self.world.block_size
-        self.SHADE = pg.Color(20, 20, 20)
+        self.SHADE = Palette.DARKGRAY
         self.DEBUG_RAY_LENGTH = max(8, self.MINIMAP_BLOCK_SIZE / 2)
 
         # when using gaussian projection, blocks are all 10% of screen when more than _ blocks away
@@ -189,9 +188,9 @@ class Game:
             # intersection visualization helpful for debugging
             if self.DEBUG:
                 if x:
-                    self.screen.circle((cont * self.SCALE_FACTOR, discrete * self.SCALE_FACTOR), 2, (0, 255, 255))
+                    self.screen.circle((cont * self.SCALE_FACTOR, discrete * self.SCALE_FACTOR), 2, Palette.LIGHTBLUE)
                 else:
-                    self.screen.circle((discrete * self.SCALE_FACTOR, cont * self.SCALE_FACTOR), 2, (0, 255, 255))
+                    self.screen.circle((discrete * self.SCALE_FACTOR, cont * self.SCALE_FACTOR), 2, Palette.LIGHTBLUE)
 
             # if a wall is detected, return distance squared and color
             if     x and (c := self.world.GAME_MAP[cont_block][discrete_block]) or \
@@ -236,6 +235,7 @@ class Game:
             corrected_dist_squared = dist_squared * np.cos(angle - self.player.dir)
 
             if self.projection_type:
+                # interesting projection based on sampling normal distribution
                 h = 0.9 * self.screen.HEIGHT * np.exp(-0.5 * corrected_dist_squared / self.VARIANCE) \
                         + self.screen.HEIGHT * 0.1
             else:
@@ -249,42 +249,44 @@ class Game:
             self.screen.line((x, start_y), (x, start_y + h), color)
             angle -= angle_inc
 
-        # minimap background
         if not self.DEBUG:
-            self.screen.rect((0, 0), [self.MINIMAP_BLOCK_SIZE * (self.world.HEIGHT - 1)] * 2, [120] * 3)
+            minimap_background = Rectangle((0, 0), [self.MINIMAP_BLOCK_SIZE * (self.world.HEIGHT - 1)] * 2)
+            self.screen.rect(minimap_background, Palette.GRAY)
 
         # draw the walls on the minimap
         for i in range(self.world.HEIGHT):
             for j in range(self.world.WIDTH):
                 if self.world.GAME_MAP[i][j]:
-                    self.screen.rect((i * self.MINIMAP_BLOCK_SIZE - 1, j * self.MINIMAP_BLOCK_SIZE - 1),
-                                    (self.MINIMAP_BLOCK_SIZE + 1, self.MINIMAP_BLOCK_SIZE + 1),
-                                    self.world.COLORS[self.world.GAME_MAP[i][j]] - self.SHADE)
+                    minimap_block = Rectangle((i * self.MINIMAP_BLOCK_SIZE - 1, j * self.MINIMAP_BLOCK_SIZE - 1),
+                                                  (self.MINIMAP_BLOCK_SIZE + 1,     self.MINIMAP_BLOCK_SIZE + 1))
+                    block_color = self.world.COLORS[self.world.GAME_MAP[i][j]] - self.SHADE
+
+                    self.screen.rect(minimap_block, block_color)
 
         # draw the player on the minimap
         minimap_pos = self.player.pos * self.SCALE_FACTOR
-        self.screen.circle(minimap_pos, max(2, self.MINIMAP_BLOCK_SIZE / 15), (50, 0, 150))
+        radius = max(2, np.floor(self.MINIMAP_BLOCK_SIZE / 15))
+        self.screen.circle(minimap_pos, radius, Palette.PURPLE)
 
         # fov and direction indicators
         if self.DEBUG:
             self.screen.line(minimap_pos, minimap_pos +
                             self.player.dirvec() * self.DEBUG_RAY_LENGTH)
             self.screen.line(minimap_pos, minimap_pos +
-                            self.player.dirvec(-self.player.fov // 2) * self.DEBUG_RAY_LENGTH)
+                            self.player.dirvec(-self.player.fov / 2) * self.DEBUG_RAY_LENGTH)
             self.screen.line(minimap_pos, minimap_pos +
-                            self.player.dirvec( self.player.fov // 2) * self.DEBUG_RAY_LENGTH)
+                            self.player.dirvec( self.player.fov / 2) * self.DEBUG_RAY_LENGTH)
 
 
 def main():
     debug = (len(sys.argv) > 1 and 'd' in sys.argv[1])
-
-    screen = pglib.Screen((1080, int(1080 * 9 / 16)), "Rustcaster python prototype", "0.0.1")
-    world = World('./default_map.png', debug=debug)
+    screen = pglib.Screen("Rustcaster python prototype", "v. 0.0.1")
+    world = World('../default_map.png', debug=debug)
     player = Player((1, 1), world)
     game = Game(screen, player, world, debug=debug)
 
     while screen.loop():
-        screen.canvas.fill([255] * 3)
+        screen.clear()
         player.loop()
         game.draw()
 

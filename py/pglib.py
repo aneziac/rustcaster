@@ -1,109 +1,138 @@
-import pygame as pg
-import pygame.gfxdraw as gfxdraw
+from pygame import font, gfxdraw, mixer, display, mouse, transform, draw
+import pygame.time, pygame.event, pygame.image
 import sys
-from typing import Tuple
+from typing import NamedTuple, Union
+
+
+class Coordinate(NamedTuple):
+    x: int
+    y: int
+
+
+class Rectangle(NamedTuple):
+    origin: Coordinate
+    dims: Coordinate
+
+
+class Palette:
+    BLACK = pygame.Color(0, 0, 0)
+    DARKGRAY = pygame.Color(20, 20, 20)
+    GRAY = pygame.Color(120, 120, 120)
+    LIGHTBLUE = pygame.Color(0, 255, 255)
+    PURPLE = pygame.Color(50, 0, 150)
+    RED = pygame.Color(200, 0, 0)
+    WHITE = pygame.Color(255, 255, 255)
 
 
 # Classes
 class Screen:
-    def __init__(self, dims: Tuple[int, int], title: str, version: str = "", alpha: bool = False):
-        pg.init()
-        pg.font.init()
-        pg.mixer.init()
+    def __init__(self, title: str, version: str = "",
+                 width: int = 1080, aspect_ratio: float = 16 / 9,
+                 alpha: bool = False, fonts: dict[str, font.Font] = {}):
+        pygame.init()
+        font.init()
+        mixer.init()
 
-        flags = pg.DOUBLEBUF
+        self.fonts = fonts
+        self.fonts['default'] = font.Font(None, 12)
+
+        flags = pygame.DOUBLEBUF
         if len(sys.argv) > 1:
             if "f" in sys.argv[1]:
-                flags = flags | pg.FULLSCREEN | pg.HWSURFACE
+                flags |= pygame.FULLSCREEN | pygame.HWSURFACE
             else:
                 if "n" in sys.argv[1]:
-                    flags = flags | pg.NOFRAME
+                    flags |= pygame.NOFRAME
                 if "r" in sys.argv[1]:
-                    flags = flags | pg.RESIZABLE
+                    flags |= pygame.RESIZABLE
 
-        self.WIDTH, self.HEIGHT = dims
-        self.canvas = pg.display.set_mode(dims, flags)
+        self.WIDTH, self.HEIGHT = width, int(width / aspect_ratio)
+        self._canvas = display.set_mode((self.WIDTH, self.HEIGHT), flags)
         if not alpha:
-            self.canvas.set_alpha(None)
-        if version != "":
-            version = " v. " + version
+            self._canvas.set_alpha(None)
 
-        pg.display.set_caption(f'{title} {version}')
-        pg.mouse.set_visible(False)
+        display.set_caption(f'{title} {version}')
+        mouse.set_visible(False)
         self.frame = 0
-        self.clock = pg.time.Clock()
+        self.clock = pygame.time.Clock()
 
-    def q1_transform(self, location):
-        def q1_transform_coordinate(location):
-            return [int(location[0]), self.HEIGHT - int(location[1])]
+    def clear(self) -> None:
+        self._canvas.fill(Palette.WHITE)
 
-        if isinstance(location[0], list):
-            transformed_coordinates = []
-            for x in location:
-                transformed_coordinates.append(q1_transform_coordinate(x))
+    def _q1_transform(self, coords: Union[Coordinate, list[Coordinate]]
+                               ) -> Union[Coordinate, list[Coordinate]]:
+
+        def q1_transform_coordinate(coord: Coordinate):
+            return Coordinate(int(coord[0]), int(self.HEIGHT - coord[1]))
+
+        if isinstance(coords, list):
+            transformed_coordinates: list[Coordinate] = []
+            for coord in coords:
+                transformed_coordinates.append(q1_transform_coordinate(coord))
             return transformed_coordinates
+
         else:
-            return q1_transform_coordinate(location)
+            return q1_transform_coordinate(coords)
 
-    def q1_transform_rect(self, location, dims):  # transform rectangle (4 inputs)
-        return [location[0], self.HEIGHT - location[1] - dims[1], dims[0], dims[1]]
+    def _q1_transform_rect(self, rect: Rectangle) -> Rectangle:
+        return Rectangle(
+            Coordinate(rect.origin[0], self.HEIGHT - rect.origin[1] - rect.dims[1]), rect.dims
+        )
 
-    def text(self, text, color, font, location):
-        rendered_text = font.render(text, True, color)
-        location = [location[x] + (font.size(text)[x] // 2) for x in range(len(self.q1_transform(location)))]
-        self.canvas.blit(rendered_text, location)
+    def text(self, text: str, coord: Coordinate,
+                    color: pygame.Color = Palette.BLACK, font: str = 'default') -> None:
+        font_obj = self.fonts[font]
+        rendered_text = font_obj.render(text, True, color)
+        self._canvas.blit(rendered_text, *coord)
 
-    def center_text(self, text, color, font):
-        self.text(text, color, font, [self.WIDTH, self.HEIGHT])
+    def center_text(self, text: str, coord: Coordinate,
+                    color: pygame.Color = Palette.BLACK, font: str = 'default') -> None:
+        text_size = self.fonts[font].size(text)
+        location = Coordinate(*[c + (text_size[i] // 2) for i, c in enumerate(self._q1_transform(coord))])
+        self.text(text, location, color, font)
 
-    def hcenter_text(self, text, color, font, height):
-        self.text(text, color, font, [self.WIDTH, height])
+    def hcenter_text(self, text: str, height: int = 0,
+                    color: pygame.Color = Palette.BLACK, font: str = 'default') -> None:
+        if not height:
+            height = self.HEIGHT
+        self.center_text(text, color, font, Coordinate(self.WIDTH, height))
 
-    def polygon(self, vertices, color):
-        vertices = self.q1_transform(vertices)
-        for v in vertices:
-            if self.is_onscreen(self.q1_transform(v)):
-                gfxdraw.aapolygon(self.canvas, vertices, color)
-                gfxdraw.filled_polygon(self.canvas, vertices, color)
+    def polygon(self, vertices: list[Coordinate], color: pygame.Color) -> None:
+        tvertices = self._q1_transform(vertices)
 
-    def circle(self, location, radius, color=(0, 0, 0)):
-        loc = self.q1_transform(location)
-        r = int(radius)
+        gfxdraw.aapolygon(self._canvas, *tvertices, color)
+        gfxdraw.filled_polygon(self._canvas, *tvertices, color)
 
-        if self.is_onscreen(loc, radius):
-            gfxdraw.aacircle(self.canvas, *loc, r, color)
-            gfxdraw.filled_circle(self.canvas, *loc, r, color)
+    def circle(self, center: Coordinate, radius: int, color: pygame.Color) -> None:
+        tcenter = self._q1_transform(center)
 
-    def line(self, start, end, color=(200, 0, 0)):
-        gfxdraw.line(self.canvas, *self.q1_transform(start), *self.q1_transform(end), color)
+        gfxdraw.aacircle(self._canvas, *tcenter, radius, color)
+        gfxdraw.filled_circle(self._canvas, *tcenter, radius, color)
 
-    def rect(self, location, dims, color=(0, 0, 0)):
-        pg.draw.rect(self.canvas, color, self.q1_transform_rect(location, dims))
+    def line(self, start: Coordinate, end: Coordinate, color: pygame.Color = Palette.RED) -> None:
+        gfxdraw.line(self._canvas, *self._q1_transform(start), *self._q1_transform(end), color)
 
-    def is_onscreen(self, location, radius=0):
-        in_width = location[0] + radius > 0 and location[0] - radius < self.WIDTH
-        in_height = location[1] + radius > 0 and location[1] - radius < self.HEIGHT
-        return in_width and in_height
+    def rect(self, rect: Rectangle, color: pygame.Color = Palette.BLACK) -> None:
+        draw.rect(self._canvas, color, self._q1_transform_rect(rect))
 
-    def loop(self):
-        events = pg.event.get()
+    def loop(self) -> bool:
+        events = pygame.event.get()
         for event in events:
-            if event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE:
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 return False
 
         self.frame += 1
         self.clock.tick()
-        pg.display.flip()
+        display.flip()
 
         return True
 
 
 # Load functions
-def load(file, extra_path="", scale=None):
-    # path = os.path.join("./assets/image/" + extra_path, file)
-    image = pg.image.load(file)
+def load_image(file, scale=None) -> pygame.Surface:
+    image = pygame.image.load(file)
     if scale is None:
         return image
     else:
         scale = [round(x) for x in scale]
-        return pg.transform.scale(image, scale)
+        return transform.scale(image, scale)
