@@ -22,10 +22,11 @@ class Palette:
     DARKGRAY = pygame.Color(20, 20, 20)
     GRAY = pygame.Color(120, 120, 120)
     LIGHTBLUE = pygame.Color(0, 255, 255)
-    PURPLE = pygame.Color(50, 0, 150)
+    ORANGE = pygame.Color(255, 102, 0)
     GREEN = pygame.Color(20, 200, 20)
     RED = pygame.Color(200, 0, 0)
     WHITE = pygame.Color(255, 255, 255)
+    YELLOW = pygame.Color(255, 255, 0)
 
 
 class Screen:
@@ -103,8 +104,8 @@ class Screen:
     def polygon(self, vertices: list[Coordinate], color: pygame.Color) -> None:
         tvertices = self._q1_transform(vertices)
 
-        gfxdraw.aapolygon(self._canvas, *tvertices, color)
-        gfxdraw.filled_polygon(self._canvas, *tvertices, color)
+        gfxdraw.aapolygon(self._canvas, tvertices, color)
+        gfxdraw.filled_polygon(self._canvas, tvertices, color)
 
     def circle(self, center: Coordinate, radius: int, color: pygame.Color) -> None:
         tcenter = self._q1_transform(center)
@@ -118,10 +119,13 @@ class Screen:
     def rect(self, rect: Rectangle, color: pygame.Color = Palette.BLACK) -> None:
         draw.rect(self._canvas, color, self._q1_transform_rect(rect))
 
+    def pixel(self, location: Coordinate, color: pygame.Color) -> None:
+        self._canvas.set_at(self._q1_transform(location), color)
+
     def loop(self) -> bool:
-        events = pygame.event.get()
-        for event in events:
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT or \
+               event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 return False
 
         self.frame += 1

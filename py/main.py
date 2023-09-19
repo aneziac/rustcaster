@@ -4,26 +4,12 @@ import pglib
 from pglib import Palette, Rectangle
 import numpy as np
 import sys
+from pick import pick
 
 
 class World:
     def __init__(self, map_path: str, debug=False):
-        if debug:
-            self.GAME_MAP = [
-                [1, 1, 1, 1, 1],
-                [1, 0, 0, 0, 1],
-                [1, 0, 2, 0, 1],
-                [1, 0, 0, 0, 1],
-                [1, 1, 1, 1, 1]
-            ]
-            self.COLORS = [
-                Palette.BLACK,
-                Palette.DARKGRAY,
-                Palette.GREEN
-            ]
-
-        else:
-            self.GAME_MAP, self.COLORS = self.load_map(map_path)
+        self.GAME_MAP, self.COLORS = self.load_map(map_path)
 
         self.WIDTH, self.HEIGHT = len(self.GAME_MAP[0]), len(self.GAME_MAP)
         self.block_size = 80
@@ -36,13 +22,13 @@ class World:
         size = im.get_size()
         game_map, colors = [[0] * size[0] for _ in range(size[1])], [Palette.INVISIBLE]
 
-        for i in range(size[0]):
-            for j in range(size[1]):
-                c = im.get_at((i, size[1] - 1 - j))
+        for row in range(size[1]):
+            for col in range(size[0]):
+                c = im.get_at((col, size[1] - 1 - row))
                 if c not in colors:
                     colors.append(c)
                 if c[3] != 0:  # alpha channel is 0, meaning it's invisible so we don't care
-                    game_map[i][j] = colors.index(c)
+                    game_map[row][col] = colors.index(c)
 
         return game_map, colors
 
@@ -98,8 +84,8 @@ class Player:
         # this bit is unnecessarily fancy but it's clever so I'm keeping it
         for n in range(4):
             wall_flags |= (1 << n) * bool(
-                self.world.GAME_MAP[self.block_x + int(np.sin(np.pi / 2 * n))] \
-                                   [self.block_y + int(np.cos(np.pi / 2 * n))]
+                self.world.GAME_MAP[self.block_y + int(np.cos(np.pi / 2 * n))] \
+                                   [self.block_x + int(np.sin(np.pi / 2 * n))]
             )
 
         return wall_flags
@@ -131,7 +117,7 @@ class Game:
         self.MINIMAP_BLOCK_SIZE: int = np.ceil(self.screen.HEIGHT / 3 / self.world.HEIGHT)
         self.SCALE_FACTOR = self.MINIMAP_BLOCK_SIZE / self.world.block_size
         self.SHADE = Palette.DARKGRAY
-        self.DEBUG_RAY_LENGTH = max(8, self.MINIMAP_BLOCK_SIZE / 2)
+        self.FOV_RAY_LENGTH = max(12, self.MINIMAP_BLOCK_SIZE)
 
         # when using gaussian projection, blocks are all 10% of screen when more than _ blocks away
         falloff_distance = 6
@@ -188,14 +174,16 @@ class Game:
 
             # intersection visualization helpful for debugging
             if self.DEBUG:
+                scaled_cont, scaled_disc = int(cont * self.SCALE_FACTOR), int(discrete * self.SCALE_FACTOR)
+
                 if horizontal:
-                    self.screen.circle((cont * self.SCALE_FACTOR, discrete * self.SCALE_FACTOR), 2, Palette.LIGHTBLUE)
+                    self.screen.pixel((scaled_cont, scaled_disc), Palette.LIGHTBLUE)
                 else:
-                    self.screen.circle((discrete * self.SCALE_FACTOR, cont * self.SCALE_FACTOR), 2, Palette.LIGHTBLUE)
+                    self.screen.pixel((scaled_disc, scaled_cont), Palette.LIGHTBLUE)
 
             # if a wall is detected, return distance squared and color
-            if     horizontal and (c := self.world.GAME_MAP[cont_block][discrete_block]) or \
-               not horizontal and (c := self.world.GAME_MAP[discrete_block][cont_block]):
+            if     horizontal and (c := self.world.GAME_MAP[discrete_block][cont_block]) or \
+               not horizontal and (c := self.world.GAME_MAP[cont_block][discrete_block]):
                 return ((discrete - player_discrete) ** 2 + (cont - player_cont) ** 2, c)
 
             # wall not detected, so we make another step to find the next intersection
@@ -222,8 +210,8 @@ class Game:
             if horizontal:
                 color += self.SHADE
 
-            # correct for fisheye effect
-            corrected_dist_squared = dist_squared * np.cos(angle - self.player.dir)
+            # correct for fisheye effect while avoiding division by zero
+            corrected_dist_squared = dist_squared * np.cos(angle - self.player.dir) + 1e-8
 
             if self.projection_type:
                 # gaussian projection based on sampling normal distribution
@@ -248,37 +236,48 @@ class Game:
             self.screen.rect(minimap_background, Palette.GRAY)
 
         # draw the walls on the minimap
-        for i in range(self.world.HEIGHT):
-            for j in range(self.world.WIDTH):
-                if self.world.GAME_MAP[i][j]:
-                    minimap_block = Rectangle((i * self.MINIMAP_BLOCK_SIZE, j * self.MINIMAP_BLOCK_SIZE),
-                                                  (self.MINIMAP_BLOCK_SIZE,     self.MINIMAP_BLOCK_SIZE))
-                    block_color = self.world.COLORS[self.world.GAME_MAP[i][j]] - self.SHADE
+        for row in range(self.world.HEIGHT):
+            for col in range(self.world.WIDTH):
+                if self.world.GAME_MAP[row][col]:
+                    minimap_block = Rectangle((col * self.MINIMAP_BLOCK_SIZE, row * self.MINIMAP_BLOCK_SIZE),
+                                                     (self.MINIMAP_BLOCK_SIZE,      self.MINIMAP_BLOCK_SIZE))
+                    block_color = self.world.COLORS[self.world.GAME_MAP[row][col]] - self.SHADE
 
                     self.screen.rect(minimap_block, block_color)
 
-        # draw the player on the minimap
+        # find player position on minimap
         minimap_pos = self.player.pos * self.SCALE_FACTOR
-        radius = max(2, np.floor(self.MINIMAP_BLOCK_SIZE / 15))
-        self.screen.circle(minimap_pos, radius, Palette.PURPLE)
 
         # fov and direction indicators
-        if self.DEBUG:
-            self.screen.line(minimap_pos, minimap_pos +
-                            self.player.dirvec() * self.DEBUG_RAY_LENGTH)
-            self.screen.line(minimap_pos, minimap_pos +
-                            self.player.dirvec(-self.player.fov / 2) * self.DEBUG_RAY_LENGTH)
-            self.screen.line(minimap_pos, minimap_pos +
-                            self.player.dirvec( self.player.fov / 2) * self.DEBUG_RAY_LENGTH)
+        self.screen.polygon(
+            [
+                minimap_pos,
+                minimap_pos + self.player.dirvec(-self.player.fov / 2) * self.FOV_RAY_LENGTH,
+                minimap_pos + self.player.dirvec( self.player.fov / 2) * self.FOV_RAY_LENGTH,
+            ],
+            Palette.YELLOW
+        )
+
+        # draw the player on the minimap
+        radius = max(2, np.floor(self.MINIMAP_BLOCK_SIZE / 15))
+        self.screen.circle(minimap_pos, radius, Palette.ORANGE)
 
         # fps
         self.screen.center_text(f'FPS: {round(self.screen.clock.get_fps())}', (50, self.screen.HEIGHT - 30))
 
 
+def choose_map() -> str:
+    base_path = '../maps/'
+    option, _ = pick(['Default', 'Simple', 'Larger'], 'Choose your map:')
+    return base_path + str(option).lower() + '.png'
+
+
 def main():
     debug = (len(sys.argv) > 1 and 'd' in sys.argv[1])
-    screen = pglib.Screen("Rustcaster python prototype", "v. 0.0.1")
-    world = World('../default_map.png', debug=debug)
+    map = choose_map()
+
+    screen = pglib.Screen("Rustcaster python edition")
+    world = World(map, debug=debug)
     player = Player((1, 1), world)
     game = Game(screen, player, world, debug=debug)
 
