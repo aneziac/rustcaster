@@ -32,7 +32,10 @@ class World:
 
         return game_map, colors
 
-    def in_boundaries(self, x: float, y: float) -> bool:
+    def in_boundaries(self, x: float, y: float, flip: bool = False) -> bool:
+        if flip:
+            x, y = y, x
+
         return x >= self.lower_corner[0] and x < self.upper_corner[0] and \
                y >= self.lower_corner[1] and y < self.upper_corner[1]
 
@@ -44,7 +47,7 @@ class Player:
         self.y = world.block_size * y + (world.block_size // 2)
         self.world = world
         self.dir = np.float64(0.01)  # prevent division by zero by giving small intial value
-        self.step_size = 2.0
+        self.step_size = 1.5
         self.turn_speed = 0.015
         self.fov = np.float64(60)
 
@@ -126,7 +129,7 @@ class Game:
 
         self.DEBUG = debug
 
-    def raycast(self, angle: np.float64, horizontal: bool) -> tuple[np.float64, int]:
+    def raycast(self, angle: np.float64, horizontal: bool) -> tuple[float, int]:
         """from angle and position, we find intersections on grid lines and test
         for whether there's a wall there. If there is, we return the square of the
         distance to the wall and the wall's color. If not, we continue searching
@@ -139,14 +142,14 @@ class Game:
             # intersections on lines parallel to x axis
             player_discrete, player_cont = self.player.y, self.player.x
             side_sign = int(np.sign(np.sin(angle)))
-            slope = 1 / np.tan(angle)
+            slope: float = 1 / np.tan(angle)
 
         else:
             # raycast with x as discrete variable and y as continuous, so we are finding
             # intersections on lines parallel to y axis
             player_discrete, player_cont = self.player.x, self.player.y
             side_sign = int(np.sign(np.cos(angle)))
-            slope = np.tan(angle)
+            slope: float = np.tan(angle)
 
         # offset to account for discrete point not initially on gridline
         block_offset = player_discrete % self.world.block_size
@@ -169,7 +172,7 @@ class Game:
         discrete = discrete_block * self.world.block_size
         discrete += (self.world.block_size if side_sign == -1 else 0)
 
-        while self.world.in_boundaries(discrete, cont):
+        while self.world.in_boundaries(discrete, cont, horizontal):
             cont_block = int(cont // self.world.block_size)
 
             # intersection visualization helpful for debugging
@@ -194,7 +197,7 @@ class Game:
         # return a large value to indicate intersection out of bounds
         # we do this instead of returning -1 etc because we want to take the
         # minimum of distance on both axes
-        return (np.float64(1e+8), 0)
+        return (1e+8, 0)
 
     def draw(self) -> None:
         # initial raycast angle and corresponding angle increment
@@ -207,7 +210,7 @@ class Game:
 
             horizontal: int
             color_index: int
-            dist_squared: np.float64
+            dist_squared: float
 
             horizontal, (dist_squared, color_index) = min(enumerate(rays), key=lambda x: x[1][0]) # type: ignore
             color = self.world.COLORS[color_index]

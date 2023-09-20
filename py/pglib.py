@@ -1,7 +1,7 @@
 from pygame import font, gfxdraw, mixer, display, mouse, transform, draw
 import pygame.time, pygame.event, pygame.image
 import sys
-from typing import NamedTuple, Union
+from typing import NamedTuple
 
 
 Coordinate = tuple[int, int]
